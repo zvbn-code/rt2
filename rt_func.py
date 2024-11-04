@@ -1,5 +1,7 @@
 #Benutzerdefinierte Funktionen für die Echtzeitstatsitik
-#Stand 09.09.2024
+#Stand 03.11.2024
+# Numpy 2.0 NaN > nan
+
 import numpy as np
 
 #Rückgabewert falls xml-Attribut nicht definiert
@@ -11,11 +13,11 @@ def isnone(xml) -> str:
         return ''
 
 def isnone_delay(xml):
-    """Ersetzen eines leeren xml text durch NaN"""
+    """Ersetzen eines leeren xml text durch np.nan"""
     if xml is not None:
         return xml.text
     else:
-        return np.NaN
+        return np.nan
 
 # Umwandlung des Zeitstrings in hh:mm
 def format_zeit(zeit):
