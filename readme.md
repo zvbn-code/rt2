@@ -1,10 +1,11 @@
 # Umstellung Auswertung RT Archiv
-- auf Version 15 z.B. mit jemals Echtzeit geliefert
+- auf Version 15 z.B. mit jemals Echtzeit gelieferten Fahrten
 - Auswerten aller Fahrten eines Tages und Schreiben nach Parquet
-- Gesamtauswertung über diese Dateien auch um Traffiq zu sparen
+- Gesamtauswertung über diese Dateien auch um Traffic zu sparen
 
 ## /home/zvbn/python/rt2/rt_api2_05_duckdb.ipynb
 - Abfrage der Daten für den gesamten VBN für einen Tag
+- Aufbereitung xml und Umwandlung in Dataframe
 - Ablage der Ergebnisse in out/parquet
 
 ## /home/zvbn/python/rt2/rt_auswertung_parquet.ipynb
