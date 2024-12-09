@@ -10,3 +10,8 @@
 
 ## /home/zvbn/python/rt2/rt_auswertung_parquet.ipynb
 - Auswertung analog der bisherigen Auswertung mit Erstellung der Echtzeitquoten
+
+## /home/zvbn/python/rt2/rt_auswertung_parquet.ipynb
+- Auswertung der Quoten Echtzeit je Linie 
+- Häufung von Fahrten ohne Echtzeit
+- Abgleich mit Zusatzfahrten
