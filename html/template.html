@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Echtzeitauswertung Bündel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+            color: #333;
+            font-size: 12px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid white;
+            
+            margin-left: 0; /* Align the table to the left */
+            margin-right: auto; /* Align the table to the left */
+        }
+        th, td {
+            padding: 4px;
+            text-align: right;
+            font-family: Arial, sans-serif;
+        }
+        h2 {
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h2>{{ html_title }}</h2>
+    <!-- Insert the HTML table here -->
+    {{ html_pivot }}
+
+    <h2>Fahrten mit mehrfachem Ausfall Echtzeit Ebene 1+, 1, 2 und Nacht</h2>
+    {{ html_table }}
+
+    <h2>Fahrten ohne Echtzeit allerdings mit Zusatzfahrtenmeldung</h2>
+    {{ html_table_zusatz }}
+
+
+</body>
+</html>
