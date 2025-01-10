@@ -1,5 +1,7 @@
 import duckdb
 from dotenv import load_dotenv, dotenv_values
+import seaborn as sns
+import pandas as pd
 
 config = dotenv_values(".env")
 
@@ -71,7 +73,30 @@ class rt_duck:
         return self.cursor.sql("from fahrten").shape[0]
     
     def anzahl_fahrten_betreiber(self):
-        return self.cursor.sql("select vu, count(vu) as count from fahrten group by vu order by count desc").df()
+        """ Anzahl der Fahrten pro Betreiber mit Anteil an Echtzeitdaten und farblicher Hinterlegung
+        Farbpallette hue 0 = rot 120 = grün  https://en.wikipedia.org/wiki/Hue#/media/File:HueScale.svg""
+        """
+        return self.cursor.sql("""select vu, 
+                    count(vu) as count_ges, 
+                    count(vu) filter (realtimeHasEverBeenReported = true) as count_rt, 
+                    count(vu) filter (datum::date = (current_date - interval 1 day)) as heute_minus_1_ges,
+                    count(vu) filter (datum::date = (current_date - interval 1 day) and realtimeHasEverBeenReported = true) as heute_minus_1_rt,
+                    round((heute_minus_1_rt / heute_minus_1_ges) * 100, 2) anteil_heute_minus_1, 
+              
+                    count(vu) filter (datum::date = (current_date - interval 2 day)) as heute_minus_2_ges,
+                    count(vu) filter (datum::date = (current_date - interval 2 day) and realtimeHasEverBeenReported = true) as heute_minus_2_rt,
+                    round((heute_minus_2_rt / heute_minus_2_ges) * 100, 2) anteil_heute_minus_2,
+                    count(vu) filter (datum::date = (current_date - interval 3 day)) as heute_minus_3_ges,
+                    count(vu) filter (datum::date = (current_date - interval 3 day) and realtimeHasEverBeenReported = true) as heute_minus_3_rt,
+                    round((heute_minus_3_rt / heute_minus_3_ges) * 100, 2) anteil_heute_minus_3
+
+              from fahrten 
+              group by vu order 
+              by count_ges desc""").df().style.format({
+        'anteil_heute_minus_1': '{:.1f}%',
+        'anteil_heute_minus_2': '{:.1f}%',
+        'anteil_heute_minus_3': '{:.1f}%'
+        }).background_gradient(cmap=sns.diverging_palette(h_neg=0, h_pos=120, as_cmap=True), subset=['anteil_heute_minus_1', 'anteil_heute_minus_2', 'anteil_heute_minus_3'])
     
     def verbindung_schließen(self):
         """ Schließen der Duckdb DB Verbindung"""
