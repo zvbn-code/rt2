@@ -7,7 +7,7 @@ import seaborn as sns
 config = dotenv_values(".env")
 
 class RtDuck:
-    """ Klasse zur Verarbeitung der Echtzeitdaten aus dem Hacon Echtzeitarchiv in DuckDB"""    
+    """ Klasse zur Verarbeitung der Echtzeitdaten aus dem Hacon Echtzeitarchiv in DuckDB Version 1.2"""    
     #db_name=':memory:'
     db_name = 'db/rt_archiv.db' #als FileDB
 
@@ -132,41 +132,44 @@ class RtDuck:
         """ Ermittelt die Quoten Echtzeitdaten und Vorfaelle"""
 
         sql = """
-            select *,
-              case 
-              when quote >= 0.85 and ebene_group = 'ebene_1_2' then 0
-              when quote < 0.85 and ebene_group = 'ebene_1_2' then ((0.95 - quote) * 10)::int
-              else 0
-              end as vorfaelle
-              
-              from 
-              (
-                select datum, ebene_group, sum(anz)::int as anz, sum(anz_rt)::int as anz_rt
-                , sum(anz_rt)::float / sum(anz)::float as quote
+        select datum, extract('month' from datum) as monat,ebene_group, anz, anz_rt, quote,
+        -- , (((0.95 - quote) * 10)::int),
+        case 
+        when quote >= 0.85 and ebene_group = 'ebene_1_2' then 0
+        -- Quote greift es bei kleiner 0.85 und begrenzt auf Anzahl der Fahrten
+        when (quote < 0.85) and (ebene_group = 'ebene_1_2') and (floor((0.95 - quote) * 10) > anz) then anz
+        when (quote < 0.85) and (ebene_group = 'ebene_1_2') and (floor((0.95 - quote) * 10) <= anz) then floor((0.95 - quote) * 10)::int
+        else 0
+        end as vorfaelle
         
-                from
+        from 
+        (
+        select datum, ebene_group, sum(anz)::int as anz, sum(anz_rt)::int as anz_rt
+        , round(sum(anz_rt)::float / sum(anz), 4)::float as quote
+
+        from
+        
+        (
+        select datum, 
+        ebene, 
                 
-                (
-                select datum, 
-                ebene, 
-                        
-                    CASE 
-                        WHEN ebene IN ('1+', '1', '2') THEN 'ebene_1_2'
-                        WHEN ebene IN ('3') THEN 'ebene_3'
-                        ELSE 'andere'
-                    END AS ebene_group,
-                    
-                    count(*) as anz, 
-                    count(*) filter (realtimeHasEverBeenReported ) as anz_rt
-                    from vw_buendel
-                    where datum >= (current_date - interval 35 day)
-                    group by all
-                    order by datum, ebene
-                )
-                
-                where ebene_group in ('ebene_1_2', 'ebene_3')
-                group by all
-                order by datum, ebene_group)
+            CASE 
+                WHEN ebene IN ('1+', '1', '2') THEN 'ebene_1_2'
+                WHEN ebene IN ('3') THEN 'ebene_3'
+                ELSE 'andere'
+            END AS ebene_group,
+            
+            count(*) as anz, 
+            count(*) filter (realtimeHasEverBeenReported ) as anz_rt
+            from vw_buendel
+            where datum >= (current_date - interval 36 day)
+            group by all
+            order by datum, ebene
+        )
+        
+        where ebene_group in ('ebene_1_2', 'ebene_3')
+        group by all
+        order by datum, ebene_group)
 
         """
 
