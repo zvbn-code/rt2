@@ -134,15 +134,15 @@ class RtDuck:
     def cal_rel(self, days_rel:int) -> None:
         """Tabelle mit relativer Liste der Tage zum Abgleich der Vollständigkeit"""
         sql =f"""
-        create or replace table cal_rel as select * from
+        create or replace table cal_rel as select datum, dayname(datum) as tag from
                     (WITH RECURSIVE days AS (
-            SELECT  (current_date - interval '{days_rel} day') AS day
+            SELECT  (current_date - interval '{days_rel} day') AS datum
             UNION ALL
-            SELECT day + INTERVAL '1 day'
+            SELECT datum + INTERVAL '1 day'
             FROM days
-            WHERE day + INTERVAL '1 day' < current_date
+            WHERE (datum + INTERVAL '1 day') < current_date
         )
-        SELECT day
+        SELECT datum
         FROM days);              
         """
         self.cursor.execute(sql)
@@ -151,7 +151,7 @@ class RtDuck:
         """ Ermittelt die Quoten Echtzeitdaten und Vorfaelle"""
 
         sql = f"""
-        select datum, dayname(datum) as tag, extract('month' from datum) as monat,ebene_group, anz, anz_rt, quote,
+        select datum, extract('month' from datum) as monat, ebene_group, anz, anz_rt, quote,
         -- , (((0.95 - quote) * 10)::int),
         case 
         when quote >= 0.85 and ebene_group = 'ebene_1_2' then 0
