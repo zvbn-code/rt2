@@ -68,16 +68,18 @@ class RtDuck:
         print("Table 'matrix' created.")
 
     def create_vw_buendel(self, buendel:str) -> None:
-        """ erstellt oder ersetzt Sicht/View auf ein Linienbündel Fahrten mit dem Namen vw_buendel"""
+        """ erstellt oder ersetzt Sicht/View auf ein Linienbündel Fahrten 
+        mit dem vw_buendel"""
         sql_buendel = f"""create or replace view vw_buendel as
                                 (select f.datum, l.ebene, f.vu, f.fnr, f.fahrtstartstationname, 
                                 f.fahrtendstationname, f.lineshort, f.lineid_short, f.hasrealtime, 
-                                f.journey_cancelled, f.reported_cancelled, f.ts_reported_cancelled, f.realtimeHasEverBeenReported         
+                                f.journey_cancelled, f.reported_cancelled, f.ts_reported_cancelled, 
+                                f.realtimeHasEverBeenReported         
                                 from fahrten f                                         
                                 left outer join linien l on f.lineid_short = l.dlid 
                                 where buendel like '%{buendel}%') 
                                 """
-        self.cursor.execute(sql_buendel)        
+        self.cursor.execute(sql_buendel)
 
     def create_vw_buendel_verlauf(self, buendel:str) -> None:
         """ erstellt oder ersetzt Sicht/View auf ein Linienbündel Fahrten mit dem Namen vw_buendel"""
@@ -128,11 +130,28 @@ class RtDuck:
         self.conn.close()
         print("Verbindung zur DB geschlossen")
 
-    def df_vorfaelle_echtzeit(self) -> None:
+
+    def cal_rel(self, days_rel:int) -> None:
+        """Tabelle mit relativer Liste der Tage zum Abgleich der Vollständigkeit"""
+        sql =f"""
+        create or replace table cal_rel as select * from
+                    (WITH RECURSIVE days AS (
+            SELECT  (current_date - interval '{days_rel} day') AS day
+            UNION ALL
+            SELECT day + INTERVAL '1 day'
+            FROM days
+            WHERE day + INTERVAL '1 day' < current_date
+        )
+        SELECT day
+        FROM days);              
+        """
+        self.cursor.execute(sql)
+
+    def df_vorfaelle_echtzeit(self, days_rel:int) -> None:
         """ Ermittelt die Quoten Echtzeitdaten und Vorfaelle"""
 
-        sql = """
-        select datum, extract('month' from datum) as monat,ebene_group, anz, anz_rt, quote,
+        sql = f"""
+        select datum, dayname(datum) as tag, extract('month' from datum) as monat,ebene_group, anz, anz_rt, quote,
         -- , (((0.95 - quote) * 10)::int),
         case 
         when quote >= 0.85 and ebene_group = 'ebene_1_2' then 0
@@ -162,7 +181,7 @@ class RtDuck:
             count(*) as anz, 
             count(*) filter (realtimeHasEverBeenReported ) as anz_rt
             from vw_buendel
-            where datum >= (current_date - interval 36 day)
+            where datum >= (current_date - interval {days_rel} day)
             group by all
             order by datum, ebene
         )
