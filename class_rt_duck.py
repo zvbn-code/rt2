@@ -193,3 +193,39 @@ class RtDuck:
         """
 
         return self.cursor.sql(sql).df()
+
+    def stat_monat(self, monat_rel:int):
+        """ Übersicht Vorfälle Ebene 1+ und 1, 2 je Monat
+        monat_rel: Monat relativ zu aktuellem Monat"""
+        sql = f"""
+        select *,
+            case 
+            when quote >= 0.85 then 0
+            -- Quote greift es bei kleiner 0.85 und begrenzt auf Anzahl der Fahrten
+            when (quote < 0.85)  and (floor((0.95 - quote) * 10) > anz) then anz
+            when (quote < 0.85)  and (floor((0.95 - quote) * 10) <= anz) then floor((0.95 - quote) * 10)::int
+            else 0
+            end as vorfaelle from
+                    (select datum, buendel,  count(*) as anz, 
+                    count(*) filter (realtimeHasEverBeenReported ) as anz_rt , 
+                    round(anz_rt / anz, 2) as quote
+                    from
+
+            (select f.datum, l.ebene, l.buendel, f.vu, f.fnr, f.fahrtstartstationname, 
+            f.fahrtendstationname, f.lineshort, f.lineid_short, f.hasrealtime, 
+            f.journey_cancelled, f.reported_cancelled, f.ts_reported_cancelled, 
+            f.realtimeHasEverBeenReported         
+            from fahrten f                                         
+            left outer join linien l on f.lineid_short = l.dlid 
+
+            where year(f.datum) = year(date_trunc('month', current_date) - interval '{monat_rel} month' ) 
+            and month(f.datum) = month(date_trunc('month', current_date) - interval '{monat_rel} month' ) 
+            and ebene in ('1+', '1', '2'))
+
+            group by all
+            order by buendel, datum)
+
+            where quote < 0.85                             
+
+            """
+        return self.cursor.sql(sql).df()
