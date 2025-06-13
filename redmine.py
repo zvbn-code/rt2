@@ -16,18 +16,31 @@ def delete_upload_dmsf(
     if key_redmine is None:
         key_redmine = os.getenv("REDMINE_API_KEY")
 
-    dir_url = project_url + "dmsf.xml?folder_id=" + str(folder_id)
+    dir_url = f"{project_url}dmsf.xml?folder_id={folder_id}"
     print(dir_url)
-    rdir = requests.get(dir_url, headers={"X-Redmine-API-Key": key_redmine}, timeout=10)
+    r = requests.get(dir_url, headers={"X-Redmine-API-Key": key_redmine}, timeout=10)
+    root = ET.fromstring(r.text)
     # Löschen der Dateien im Echtzeitordner
-    for child in ET.fromstring(rdir.text).iter("file"):
-        for f in child.iter("id"):
-            print(f.tag, f.text)
-            del_url = f"https://vms.zvbn.de/dmsf/files/{f.text}.xml?commit=yes"
-            rdel = requests.delete(
-                del_url, headers={"X-Redmine-API-Key": key_redmine}, timeout=10
-            )
-            print(rdel)
+    for file_element in root.findall("dmsf_nodes/node", namespaces=None): #dmsf ab Version 3.2.4 12.06.2025
+        #print(f"File Element: {file_element.tag} Text: {file_element.text}")
+        file_id_elem = file_element.find("id")
+        file_title_elem = file_element.find("title")
+        file_type_elem = file_element.find("type")
+        file_filename_elem = file_element.find("filename")
+
+        file_id = file_id_elem.text if file_id_elem is not None else None
+        file_title = file_title_elem.text if file_title_elem is not None else None
+        file_type = file_type_elem.text if file_type_elem is not None else None
+        file_filename = file_filename_elem.text if file_filename_elem is not None else None
+
+        print(f"ID: {file_id}, Title: {file_title} Type: {file_type} Filename: {file_filename}")
+
+        del_url = f"https://vms.zvbn.de/dmsf/files/{file_id}.xml?commit=yes"
+        
+        rdel = requests.delete(
+            del_url, headers={"X-Redmine-API-Key": key_redmine}, timeout=10
+        )
+        print(rdel)
 
     # Upload der Datei und Abfragen des Tokens
     url_upload = f"{project_url}dmsf/upload.xml?filename={file_name}"
@@ -74,4 +87,3 @@ def delete_upload_dmsf(
         timeout=10,
     )
     print(rdc)
-    return rdc
