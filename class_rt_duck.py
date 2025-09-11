@@ -3,6 +3,7 @@
 import duckdb
 from dotenv import dotenv_values
 import seaborn as sns
+import pandas as pd
 
 config = dotenv_values(".env")
 
@@ -32,7 +33,8 @@ class RtDuck:
         self.cursor.sql(sql_lin)
 
     def create_table_fahrten(self, server:str) -> None:
-        """ erstellt eine Tabelle fshrten aus den Parquet Files Fahrten fahrten_yyyy_mm_dd.parquet"""
+        """ erstellt eine Tabelle fahrten aus den Parquet Files Fahrten fahrten_yyyy_mm_dd.parquet
+        server: z.B. 'prod' oder 'demo'"""
         sql_create = f"""create or replace table fahrten as select * 
             from read_parquet('out/parquet/{server}/fahrten*.parquet',  union_by_name = true, filename = true)"""
         self.cursor.execute(sql_create)
@@ -47,13 +49,15 @@ class RtDuck:
         print("Table 'fahrten' created.")
 
     def create_table_zusatz(self, server:str) -> None:
-        """ erstellt eine Tabelle zusatz aus den Parquet Files Fahrten zusatz_yyyy_mm_dd.parquet"""
+        """ erstellt eine Tabelle zusatz aus den Parquet Files Fahrten zusatz_yyyy_mm_dd.parquet
+        server: z.B. 'prod' oder 'demo'"""
         sql_create = f"create or replace table zusatz as select * from read_parquet('out/parquet/{server}/zusatz*.parquet',  union_by_name = true, filename = true)"
         self.cursor.execute(sql_create)
         print("Table 'zusatz' created.")
 
     def create_table_verlauf(self, server:str) -> None:
-        """ erstellt eine Tabelle zusatz aus den Parquet Files Fahrten verlauf_yyyy_mm_dd.parquet"""
+        """ erstellt eine Tabelle zusatz aus den Parquet Files Fahrten verlauf_yyyy_mm_dd.parquet
+        server: z.B. 'prod' oder 'demo'"""
         sql_create = f"""create or replace table verlauf as select * 
             from read_parquet('out/parquet/{server}/verlauf*.parquet',  union_by_name = true, filename = true)"""
         self.cursor.execute(sql_create)
@@ -62,14 +66,16 @@ class RtDuck:
         print("Table 'verlauf' created.")
 
     def create_table_matrix(self, server:str) -> None:
-        """ erstellt eine Tabelle matrix aus den Parquet Files Fahrten matrix_yyyy_mm_dd.parquet"""
+        """ erstellt eine Tabelle matrix aus den Parquet Files Fahrten matrix_yyyy_mm_dd.parquet
+        server: z.B. 'prod' oder 'demo'"""
         sql_create = f"create or replace table matrix as select * from read_parquet('out/parquet/{server}/matrix*.parquet',  union_by_name = true, filename = true)"
         self.cursor.execute(sql_create)
         print("Table 'matrix' created.")
 
     def create_vw_buendel(self, buendel:str) -> None:
         """ erstellt oder ersetzt Sicht/View auf ein Linienbündel Fahrten 
-        mit dem vw_buendel"""
+        mit dem vw_buendel
+        buendel: Linienbündel z.B. 'VER Nord'"""
         sql_buendel = f"""create or replace view vw_buendel as
                                 (select f.datum, l.ebene, f.vu, f.fnr, f.fahrtstartstationname, 
                                 f.fahrtendstationname, f.lineshort, f.lineid_short, f.hasrealtime, 
@@ -82,7 +88,8 @@ class RtDuck:
         self.cursor.execute(sql_buendel)
 
     def create_vw_buendel_verlauf(self, buendel:str) -> None:
-        """ erstellt oder ersetzt Sicht/View auf ein Linienbündel Fahrten mit dem Namen vw_buendel"""
+        """ erstellt oder ersetzt Sicht/View auf ein Linienbündel Fahrten mit dem Namen vw_buendel
+        buendel: Linienbündel z.B. 'VER Nord'"""
         sql = f"""create or replace view vw_buendel_verlauf as
                                 (select v.operday, l.ebene, v.fnr, v.index, v.station_nr, 
                                 v.station_name, v.arr_del, v.dep_del,
@@ -132,7 +139,8 @@ class RtDuck:
 
 
     def cal_rel(self, days_rel:int) -> None:
-        """Tabelle mit relativer Liste der Tage zum Abgleich der Vollständigkeit"""
+        """Tabelle mit relativer Liste der Tage zum Abgleich der Vollständigkeit
+        days_rel: Anzahl der Tage relativ zum aktuellen Tag"""
         sql =f"""
         create or replace table cal_rel as select datum, dayname(datum) as tag from
                     (WITH RECURSIVE days AS (
@@ -147,8 +155,9 @@ class RtDuck:
         """
         self.cursor.execute(sql)
 
-    def df_vorfaelle_echtzeit(self, days_rel:int) -> None:
-        """ Ermittelt die Quoten Echtzeitdaten und Vorfaelle"""
+    def df_vorfaelle_echtzeit(self, days_rel:int) -> pd.DataFrame:
+        """ Ermittelt die Quoten Echtzeitdaten und Vorfaelle
+        days_rel: Anzahl der Tage relativ zum aktuellen Tag"""
 
         sql = f"""
         select datum, extract('month' from datum) as monat, ebene_group, anz, anz_rt, quote,
@@ -159,15 +168,12 @@ class RtDuck:
         when (quote < 0.85) and (ebene_group = 'ebene_1_2') and (floor((0.95 - quote) * 10) > anz) then anz
         when (quote < 0.85) and (ebene_group = 'ebene_1_2') and (floor((0.95 - quote) * 10) <= anz) then floor((0.95 - quote) * 10)::int
         else 0
-        end as vorfaelle
-        
+        end as vorfaelle        
         from 
         (
         select datum, ebene_group, sum(anz)::int as anz, sum(anz_rt)::int as anz_rt
         , round(sum(anz_rt)::float / sum(anz), 4)::float as quote
-
-        from
-        
+        from        
         (
         select datum, 
         ebene, 
@@ -189,12 +195,10 @@ class RtDuck:
         where ebene_group in ('ebene_1_2', 'ebene_3')
         group by all
         order by datum, ebene_group)
-
         """
-
         return self.cursor.sql(sql).df()
 
-    def stat_monat(self, monat_rel:int):
+    def stat_monat(self, monat_rel:int) -> pd.DataFrame:
         """ Übersicht Vorfälle Ebene 1+ und 1, 2 je Monat
         monat_rel: Monat relativ zu aktuellem Monat"""
         sql = f"""
@@ -221,11 +225,26 @@ class RtDuck:
             where year(f.datum) = year(date_trunc('month', current_date) - interval '{monat_rel} month' ) 
             and month(f.datum) = month(date_trunc('month', current_date) - interval '{monat_rel} month' ) 
             and ebene in ('1+', '1', '2'))
-
             group by all
             order by buendel, datum)
-
-            where quote < 0.85                             
-
+            where quote < 0.85
             """
+        return self.cursor.sql(sql).df()
+
+    def hohe_verspaetung(self, device_id:str, max_del:int, interval:int) -> pd.DataFrame:
+        """ Übersicht hoher Versätungen nach Wildcard ClientID
+        device_id: Wildcard für die DeviceID, z.B. 'IVU' oder 'IVU#REGIO'
+        max_del: Minimale Verspätung in Minuten
+        interval: Zeitraum in Tagen, z.B. 7 für die letzten 7 Tage"""
+        sql = f"""
+                select operday::date::text as datum,
+                                journeyoperator ,lineshortname, fnr, max(dep_del) as max_dep_del,
+                                max(arr_del) as max_arr_del
+                    from verlauf 
+                where deviceid like '%{device_id}%' and operday >= (current_date - interval {interval} day) 
+                and (dep_del > {max_del} or arr_del > {max_del})
+                group by all
+                order by lineshortname
+                -- duckdb.limit 5
+                """
         return self.cursor.sql(sql).df()
