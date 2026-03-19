@@ -8,7 +8,8 @@ import pandas as pd
 config = dotenv_values(".env")
 
 class RtDuck:
-    """ Klasse zur Verarbeitung der Echtzeitdaten aus dem Hacon Echtzeitarchiv in DuckDB Version 1.2"""    
+    """ Klasse zur Verarbeitung der Echtzeitdaten aus dem Hacon Echtzeitarchiv in DuckDB Version 1.x
+    und Laden der Linien aus der PG DB"""    
     #db_name=':memory:'
     db_name = 'db/rt_archiv.db' #als FileDB
 
