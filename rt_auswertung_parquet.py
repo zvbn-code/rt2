@@ -23,14 +23,18 @@ import logging
 import glob
 
 import openpyxl
-from openpyxl import load_workbook
-from openpyxl.styles import NamedStyle
+from openpyxl import load_workbook, Workbook
+from openpyxl.styles import NamedStyle, Font
+from openpyxl.cell import WriteOnlyCell
 import duckdb
 from openpyxl.formatting.rule import ColorScaleRule, CellIsRule, FormulaRule
 import matplotlib.pyplot as plt
 
 # %%
 duckdb.__version__
+
+# %%
+openpyxl.__version__
 
 # %%
 log_file = "log/log_rt.txt"
@@ -124,7 +128,10 @@ rt
 #rt.verbindung_schliessen()
 
 # %%
-rt.create_table_fahrten(server = 'prod')
+rt.create_table_fahrten(server = 'prod', interval = 42)
+
+# %%
+rt.cursor.sql("select count(*) from fahrten").fetchall()
 
 # %%
 df = rt.cursor.sql("""pivot (select fnr, datum::date as datum, hasRealtime from fahrten 
@@ -342,17 +349,21 @@ rt.cursor.sql("""from fahrten
 rt.cursor.sql("from linien where linie like '6__' order by buendel, linie limit 30")
 
 # %%
-rt.create_table_zusatz(server = 'prod')
-rt.create_table_verlauf(server = 'prod')
-rt.create_table_matrix(server = 'prod')
+rt.cursor.sql("""select * from read_parquet('out/parquet/prod/matrix_spnv_2026_03*.parquet',  union_by_name = true, filename = true) 
+ limit 5""").df()
+
+# %%
+rt.create_table_zusatz(server = 'prod', interval = 42)
+rt.create_table_verlauf(server = 'prod', interval = 42)
+rt.create_table_matrix(server = 'prod', interval = 42)
 
 # %%
 rt.cursor.sql("""select * 
               from zusatz 
-              where datum = '2025-11-03' 
-              and fahrtstarttime::text like '%06:15%'
+              where datum = '2026-04-03' 
+              -- and fahrtstarttime::text like '%06:15%'
               -- and destination like '%Bremen%'
-              -- limit 5""").df()
+              limit 5""").df()
 
 # %% [markdown]
 # ## Pünktlichkeit je Bündel
@@ -520,7 +531,7 @@ round((count (*) filter (journey_cancelled = true) / count(*) ) * 100, 1) as ant
 from fahrten f 
 join linien l on f.lineid_short = l.dlid 
 where 
-f.datum = '2025-09-24'
+f.datum = '2026-04-13'
 and buendel = '{buendel}'
 group by all
 order by datum desc, buendel"""
@@ -862,12 +873,10 @@ rt.cursor.sql("select * from vw_buendel  ")
 
 # %%
 df = rt.cursor.sql("""pivot (select fnr, datum::date as datum, hasRealtime from vw_buendel 
-
-where datum > (current_date - 28))
-
-on  datum
-using sum(hasRealtime)
-order by fnr
+                        where datum > (current_date - 42))
+                        on  datum
+                        using sum(hasRealtime)
+                        order by fnr
 """).df()
 df
 
@@ -881,13 +890,13 @@ date_style = NamedStyle(name="date_style", number_format="YYYY-MM-DD")
 eine_nachkomma = NamedStyle(name = 'eine_nachkomma', number_format= '#,##0.0')
 zwei_nachkomma = NamedStyle(name = 'eine_nachkomma', number_format= '#,##0.00')
 
-for b in list_buendel:
+for b in list_buendel[0:500]:
     print(b, b.replace(' ', '_').lower(), replace_german_special_characters(b).replace(' ', '_').lower())
 
     rt.create_vw_buendel(b)
     rt.create_vw_buendel_verlauf(buendel=b)
     rt.cal_rel(36)
-    #Abfrage für die letzten 30 Tage
+    #Abfrage für die letzten {interval_auswertung} Tage
     q_pivot_lm = rt.cursor.sql(f"""
                         pivot (select 
                                 datum::date as datum, ebene, lineshort, lineid_short, count(*) anz,
@@ -976,7 +985,6 @@ for b in list_buendel:
     with open(html_combined, 'w') as file:
         file.write(html_page)
 
-
     #Ausgabe der wichtigen Ergebnisse als Excel
     xl = f"buendel_stat/{replace_german_special_characters(b).replace(' ', '_').lower()}_stat.xlsx"
 
@@ -987,84 +995,156 @@ for b in list_buendel:
     sn04 = '05 verlauf' #nicht im Stadtverkehr
     sn05 = '06 Echtzeit je Fahrt' #nicht im Stadtverkehr
 
-    with pd.ExcelWriter(xl, engine='openpyxl') as writer:
-        writer.book.add_named_style(date_style)
+    wb = Workbook(write_only=True)
+    #Erstellen des Hilfeblattes an erster Position
+    ws = wb.create_sheet(title=sn00, index=0)
+     
+    ws.append([f"Erstellt: {dt.datetime.now().strftime('%Y-%m-%d %H:%M')}"])    
+    ws.append(["Erläuterung der Werte in der Tabelle"])
+    ws.append([f"Blatt {sn01} enthält die Echtzeitquote der Ebenen des Bündels {b} für die letzten {interval_auswertung} Tage"])
+    ws.append([f"Blatt {sn02} enthält die Echtzeitquote der Linien des Bündels {b} für die letzten {interval_auswertung} Tage"])
+    ws.append([f"Blatt {sn03} filterbare Liste der Fahrten {b} für die letzten {interval_auswertung} Tage"])
+    ws.append([f"Blatt {sn05} enthält die Echtzeitdaten je Fahrt des Bündels {b} für die letzten {interval_auswertung} Tage"])
 
-        #02 Statistik Ebene
-        rt.cal_rel(36)
-        df_vorfaelle = rt.cursor.sql("from cal_rel").df().merge(rt.df_vorfaelle_echtzeit(36), on = 'datum', how='left')
-        df_vorfaelle.to_excel(writer, index=False, sheet_name=sn01)
-        writer.book[sn01].freeze_panes = 'A2'
-        writer.book[sn01].auto_filter.ref=f'A1:H{df_vorfaelle.shape[0]+1}'
-        for row in writer.book[sn01].iter_rows(min_row=2, min_col=1, max_col=1):
-                for cell in row:
-                    cell.style = date_style
+    # Create cell with styling
+    # bold_font = Font(bold=True)
+    # cell = WriteOnlyCell(ws, value="Header")
+    # cell.font = bold_font
+    # ws.append([cell])
 
-        for row in writer.book[sn01].iter_rows(min_row=2, min_col=7, max_col=7):
-                for cell in row:
-                    cell.style = zwei_nachkomma
-        writer.book[sn01][f"H{df_vorfaelle.shape[0]+3}"] = f"=SUBTOTAL(9, H2:H{df_vorfaelle.shape[0]+1})"
-        writer.book[sn01].column_dimensions['A'].width = 15
-        # Add a three-color scale
+    # Blatt 01 Vorfälle
+    ws = wb.create_sheet(title=sn01, index=1)
+    df_vorfaelle = rt.cursor.sql("from cal_rel").df().merge(rt.df_vorfaelle_echtzeit(36), on = 'datum', how='left')
+    ws.append(df_vorfaelle.columns.tolist())
+    for r in df_vorfaelle.itertuples(index=False):
+        ws.append(r)
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref='A:H'
 
-        writer.book[sn01].conditional_formatting.add(f'G1:G{df_vorfaelle.shape[0]+1}',
-                            ColorScaleRule(start_type='num', start_value=0.0, start_color='AA0000',
-                            mid_type='num', mid_value=0.5, mid_color='FFFF00',
-                            end_type='num', end_value=1.0, end_color='00AA00')
-                             )
+    #Statistik Pivot
+    ws = wb.create_sheet(title=sn02, index=2)
+    ws.append(q_pivot_lm.df().columns.tolist())
+    for r in q_pivot_lm.df().itertuples(index=False):
+        ws.append(r)
 
-        #Statistik Pivot
-        q_pivot_lm.df().to_excel(writer, index=True, sheet_name=sn02)
-        writer.book[sn02].freeze_panes = 'A2'
-        writer.book[sn02].auto_filter.ref='A:H'
+    #Fahrten gesamt
+    ws = wb.create_sheet(title=sn03, index=3)
+    ws.append(df_fahrten_gesamt.columns.tolist())
+    for r in df_fahrten_gesamt.itertuples(index=False):
+        ws.append(r)
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref='A:N'
+    
+    #Verlauf nicht im Stadtverkehr wegen Datenmenge
+    if b not in ('HB Bus', 'HB Tram', 'BHV', 'DEL', 'OL Stadt'):
+        ws = wb.create_sheet(title=sn04, index=4)
+        df_verlauf = rt.cursor.sql("""from vw_buendel_verlauf""").df()
+        ws.append(df_verlauf.columns.tolist())
+        for r in df_verlauf.itertuples(index=False):
+            ws.append(r)
+    #         rt.cursor.sql("""from vw_buendel_verlauf""").df().to_excel(writer, index=False, sheet_name=sn04)
+    
+    wb.save(xl)
+    # with pd.ExcelWriter(xl, engine='openpyxl') as writer:
+    #     writer.book.add_named_style(date_style)
 
-        df_fahrten_gesamt.to_excel(writer, index=False, sheet_name=sn03)
-        writer.book[sn03].freeze_panes = 'A2'
-        writer.book[sn03].auto_filter.ref='A:N'
-        writer.book[sn03].column_dimensions['A'].width = 15
-        for row in writer.book[sn03].iter_rows(min_row=2, min_col=1, max_col=1):
-                for cell in row:
-                    cell.style = date_style
+    #     #02 Statistik Ebene
+    #     rt.cal_rel(36)
+    #     df_vorfaelle = rt.cursor.sql("from cal_rel").df().merge(rt.df_vorfaelle_echtzeit(36), on = 'datum', how='left')
+    #     df_vorfaelle.to_excel(writer, index=False, sheet_name=sn01)
+    #     writer.book[sn01].freeze_panes = 'A2'
+    #     writer.book[sn01].auto_filter.ref=f'A1:H{df_vorfaelle.shape[0]+1}'
+    #     for row in writer.book[sn01].iter_rows(min_row=2, min_col=1, max_col=1):
+    #             for cell in row:
+    #                 cell.style = date_style
 
-        #Verlauf nicht im Stadtverkehr wegen Datenmenge
-        if b not in ('HB Bus', 'HB Tram', 'BHV', 'DEL', 'OL Stadt'):
+    #     for row in writer.book[sn01].iter_rows(min_row=2, min_col=7, max_col=7):
+    #             for cell in row:
+    #                 cell.style = zwei_nachkomma
+    #     writer.book[sn01][f"H{df_vorfaelle.shape[0]+3}"] = f"=SUBTOTAL(9, H2:H{df_vorfaelle.shape[0]+1})"
+    #     writer.book[sn01].column_dimensions['A'].width = 15
+    #     # Add a three-color scale
 
-            rt.cursor.sql("""from vw_buendel_verlauf""").df().to_excel(writer, index=False, sheet_name=sn04)
-            writer.book[sn04].freeze_panes = 'A2'
-            writer.book[sn04].auto_filter.ref='A:J'
-            writer.book[sn04].column_dimensions['A'].width = 15
-            writer.book[sn04].column_dimensions['F'].width = 30
-            for row in writer.book[sn04].iter_rows(min_row=2, min_col=1, max_col=1):
-                for cell in row:
-                    cell.style = date_style
+    #     writer.book[sn01].conditional_formatting.add(f'G1:G{df_vorfaelle.shape[0]+1}',
+    #                         ColorScaleRule(start_type='num', start_value=0.0, start_color='AA0000',
+    #                         mid_type='num', mid_value=0.5, mid_color='FFFF00',
+    #                         end_type='num', end_value=1.0, end_color='00AA00')
+    #                          )
 
-        #Echtzeit je Fahrt nicht im Stadtverkehr wegen Datenmenge
-        if b not in ('HB Bus', 'HB Tram', 'BHV', 'DEL', 'OL Stadt'):
-            df = rt.cursor.sql(f"""pivot (select fnr, datum::date as datum, hasRealtime from vw_buendel 
-            where datum > (current_date - {interval_auswertung}))
-            on  datum
-            using sum(hasRealtime)
-            order by fnr
-            """).df()
+    #     #Statistik Pivot
+    #     q_pivot_lm.df().to_excel(writer, index=True, sheet_name=sn02)
+    #     writer.book[sn02].freeze_panes = 'A2'
+    #     writer.book[sn02].auto_filter.ref='A:H'
+
+    #     df_fahrten_gesamt.to_excel(writer, index=False, sheet_name=sn03)
+    #     writer.book[sn03].freeze_panes = 'A2'
+    #     writer.book[sn03].auto_filter.ref='A:N'
+    #     writer.book[sn03].column_dimensions['A'].width = 15
+    #     for row in writer.book[sn03].iter_rows(min_row=2, min_col=1, max_col=1):
+    #             for cell in row:
+    #                 cell.style = date_style
+
+    #     #Verlauf nicht im Stadtverkehr wegen Datenmenge
+    #     if b not in ('HB Bus', 'HB Tram', 'BHV', 'DEL', 'OL Stadt'):
+
+    #         rt.cursor.sql("""from vw_buendel_verlauf""").df().to_excel(writer, index=False, sheet_name=sn04)
+    #         writer.book[sn04].freeze_panes = 'A2'
+    #         writer.book[sn04].auto_filter.ref='A:J'
+    #         writer.book[sn04].column_dimensions['A'].width = 15
+    #         writer.book[sn04].column_dimensions['F'].width = 30
+    #         for row in writer.book[sn04].iter_rows(min_row=2, min_col=1, max_col=1):
+    #             for cell in row:
+    #                 cell.style = date_style
+
+    #     #Echtzeit je Fahrt nicht im Stadtverkehr wegen Datenmenge
+    #     if b not in ('HB Bus', 'HB Tram', 'BHV', 'DEL', 'OL Stadt'):
+    #         df = rt.cursor.sql(f"""pivot (select fnr, datum::date as datum, hasRealtime from vw_buendel 
+    #         where datum > (current_date - {interval_auswertung}))
+    #         on  datum
+    #         using sum(hasRealtime)
+    #         order by fnr
+    #         """).df()
             
-        df.to_excel(writer, index=True, sheet_name=sn05)
-        writer.book[sn05].freeze_panes = 'A2'
+    #     df.to_excel(writer, index=True, sheet_name=sn05)
+    #     writer.book[sn05].freeze_panes = 'A2'
              
 
-    # Öffnen des Workbooks und Anwenden der Formatierung
-    wb = openpyxl.load_workbook(xl)
+    # # Öffnen des Workbooks und Anwenden der Formatierung
+    # wb = openpyxl.load_workbook(xl)
 
-    #Erstellen des Hilfeblattes an erster Position
-    wb.create_sheet(sn00, index=0)
-    sheet = wb[sn00]
-    sheet['A1'] = f"Erstellt: {dt.datetime.now().strftime('%Y-%m-%d %H:%M')}"
-    sheet['A2'] =  "Erläuterung der Werte in der Tabelle"
-    sheet['A3'] = f"Blatt {sn01} enthält die Echtzeitquote der Ebenen des Bündels {b} für die letzten {interval_auswertung} Tage"
-    sheet['A4'] = f"Blatt {sn02} enthält die Echtzeitquote der Linien des Bündels {b} für die letzten {interval_auswertung} Tage"
-    sheet['A5'] = f"Blatt {sn03} filterbare Liste der Fahrten {b} für die letzten {interval_auswertung} Tage"
-    sheet['A6'] = f"Blatt {sn05} enthält die Echtzeitdaten je Fahrt des Bündels {b} für die letzten {interval_auswertung} Tage"
+    # #Erstellen des Hilfeblattes an erster Position
+    # wb.create_sheet(sn00, index=0)
+    # sheet = wb[sn00]
+    # sheet['A1'] = f"Erstellt: {dt.datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    # sheet['A2'] =  "Erläuterung der Werte in der Tabelle"
+    # sheet['A3'] = f"Blatt {sn01} enthält die Echtzeitquote der Ebenen des Bündels {b} für die letzten {interval_auswertung} Tage"
+    # sheet['A4'] = f"Blatt {sn02} enthält die Echtzeitquote der Linien des Bündels {b} für die letzten {interval_auswertung} Tage"
+    # sheet['A5'] = f"Blatt {sn03} filterbare Liste der Fahrten {b} für die letzten {interval_auswertung} Tage"
+    # sheet['A6'] = f"Blatt {sn05} enthält die Echtzeitdaten je Fahrt des Bündels {b} für die letzten {interval_auswertung} Tage"
 
-    wb.save(xl)       
+    # wb.save(xl)       
+
+# %%
+df_vorfaelle.columns.tolist()
+
+# %%
+data = []
+for row in range(1, 10):
+    row_data = [f"{row}-{col}" for col in range(1, 5)]
+    data.append(row_data)
+
+data
+
+# %%
+data = [] 
+data.append([f"Erstellt: {dt.datetime.now().strftime('%Y-%m-%d %H:%M')}"])    
+data.append(["Erläuterung der Werte in der Tabelle"])
+data.append([f"Blatt {sn01} enthält die Echtzeitquote der Ebenen des Bündels {b} für die letzten {interval_auswertung} Tage"])
+data.append([f"Blatt {sn02} enthält die Echtzeitquote der Linien des Bündels {b} für die letzten {interval_auswertung} Tage"])
+data.append([f"Blatt {sn03} filterbare Liste der Fahrten {b} für die letzten {interval_auswertung} Tage"])
+data.append([f"Blatt {sn05} enthält die Echtzeitdaten je Fahrt des Bündels {b} für die letzten {interval_auswertung} Tage"])
+
+data
 
 # %% [markdown]
 # ### Übersichtstabelle Vorfälle letzte Monate

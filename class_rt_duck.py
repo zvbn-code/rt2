@@ -33,11 +33,12 @@ class RtDuck:
         ORDER BY buendel, ebene, nummer """
         self.cursor.sql(sql_lin)
 
-    def create_table_fahrten(self, server:str) -> None:
+    def create_table_fahrten(self, server:str, interval:int) -> None:
         """ erstellt eine Tabelle fahrten aus den Parquet Files Fahrten fahrten_yyyy_mm_dd.parquet
         server: z.B. 'prod' oder 'demo'"""
         sql_create = f"""create or replace table fahrten as select * 
-            from read_parquet('out/parquet/{server}/fahrten*.parquet',  union_by_name = true, filename = true)"""
+            from read_parquet('out/parquet/{server}/fahrten*.parquet',  union_by_name = true, filename = true)
+            where datum::date >= (current_date - interval {interval} day)"""
         self.cursor.execute(sql_create)
         #self.cursor("update fahrten ")
         self.cursor.sql("alter table fahrten add column if not exists lineid_short VARCHAR")
@@ -49,27 +50,33 @@ class RtDuck:
 
         print("Table 'fahrten' created.")
 
-    def create_table_zusatz(self, server:str) -> None:
+    def create_table_zusatz(self, server:str, interval:int) -> None:
         """ erstellt eine Tabelle zusatz aus den Parquet Files Fahrten zusatz_yyyy_mm_dd.parquet
         server: z.B. 'prod' oder 'demo'"""
-        sql_create = f"create or replace table zusatz as select * from read_parquet('out/parquet/{server}/zusatz*.parquet',  union_by_name = true, filename = true)"
+        sql_create = f"""create or replace table zusatz as 
+            select * 
+            from read_parquet('out/parquet/{server}/zusatz*.parquet',  union_by_name = true, filename = true)
+            where datum::date >= (current_date - interval {interval} day)"""
         self.cursor.execute(sql_create)
         print("Table 'zusatz' created.")
 
-    def create_table_verlauf(self, server:str) -> None:
+    def create_table_verlauf(self, server:str, interval:int) -> None:
         """ erstellt eine Tabelle zusatz aus den Parquet Files Fahrten verlauf_yyyy_mm_dd.parquet
         server: z.B. 'prod' oder 'demo'"""
         sql_create = f"""create or replace table verlauf as select * 
-            from read_parquet('out/parquet/{server}/verlauf*.parquet',  union_by_name = true, filename = true)"""
+            from read_parquet('out/parquet/{server}/verlauf*.parquet',  union_by_name = true, filename = true)
+            where operday::date >= (current_date - interval {interval} day)"""
         self.cursor.execute(sql_create)
         self.cursor.sql("alter table verlauf add column if not exists lineid_short VARCHAR")
         self.cursor.sql("""update verlauf set lineid_short = concat_ws(':', split_part(ex_lineid,':', 1), split_part(ex_lineid,':', 2), split_part(ex_lineid,':', 3))""")
         print("Table 'verlauf' created.")
 
-    def create_table_matrix(self, server:str) -> None:
+    def create_table_matrix(self, server:str, interval:int) -> None:
         """ erstellt eine Tabelle matrix aus den Parquet Files Fahrten matrix_yyyy_mm_dd.parquet
         server: z.B. 'prod' oder 'demo'"""
-        sql_create = f"create or replace table matrix as select * from read_parquet('out/parquet/{server}/matrix*.parquet',  union_by_name = true, filename = true)"
+        sql_create = f"""create or replace table matrix as select * 
+            from read_parquet('out/parquet/{server}/matrix*.parquet',  union_by_name = true, filename = true)
+            where operatingDay::date >= (current_date - interval {interval} day)"""
         self.cursor.execute(sql_create)
         print("Table 'matrix' created.")
 
