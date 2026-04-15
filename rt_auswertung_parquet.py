@@ -739,30 +739,30 @@ rt.cursor.sql("select min(datum )::date as min_date, max(datum)::date as amx_dat
 # ### Häufung von Fahrten ohne Echtzeit
 
 # %%
-rt.create_vw_buendel('OL Nord')
-df_fahrten_ohne_ez = rt.cursor.sql("""
+# rt.create_vw_buendel('OL Nord')
+# df_fahrten_ohne_ez = rt.cursor.sql("""
               
-                select datum::date as datum, ebene, lineshort , fnr, hasrealtime
+#                 select datum::date as datum, ebene, lineshort , fnr, hasrealtime
                
-                from vw_buendel 
-                where datum >= (current_date - interval 30 day) and hasrealtime = false
-                group by all
-                order by ebene, lineshort, fnr
+#                 from vw_buendel 
+#                 where datum >= (current_date - interval 30 day) and hasrealtime = false
+#                 group by all
+#                 order by ebene, lineshort, fnr
     
-              """).df()
+#               """).df()
 
-df_fahrten_ohne_ez_zusatz = df_fahrten_ohne_ez.merge(df_zusatz, left_on = ['datum', 'fnr'], right_on = ['datum', 'fnr'], how='left')
-df_fahrten_ohne_ez_zusatz.query("~vu.isnull()") 
+# df_fahrten_ohne_ez_zusatz = df_fahrten_ohne_ez.merge(df_zusatz, left_on = ['datum', 'fnr'], right_on = ['datum', 'fnr'], how='left')
+# df_fahrten_ohne_ez_zusatz.query("~vu.isnull()") 
 
-df_fahrten_ohne_ez_zusatz[['lineshort_x','datum','fnr']].groupby(['lineshort_x','fnr'], as_index=False)\
-    .agg(datum_min=('datum', 'min'), datum_max=('datum', 'max'), count=('datum', 'count')).sort_values('count', ascending=False)\
-    .to_excel('out/rt_fahrten_ohne_ez_zusatz.xlsx', index=False)
-
-# %%
-rt.cursor.sql("from vw_buendel")
+# df_fahrten_ohne_ez_zusatz[['lineshort_x','datum','fnr']].groupby(['lineshort_x','fnr'], as_index=False)\
+#     .agg(datum_min=('datum', 'min'), datum_max=('datum', 'max'), count=('datum', 'count')).sort_values('count', ascending=False)\
+#     .to_excel('out/rt_fahrten_ohne_ez_zusatz.xlsx', index=False)
 
 # %%
-df_fahrten_ohne_ez_zusatz.query("~vu.isnull()")
+#rt.cursor.sql("from vw_buendel")
+
+# %%
+#df_fahrten_ohne_ez_zusatz.query("~vu.isnull()")
 
 # %%
 interval_auswertung = 21
@@ -796,9 +796,9 @@ with pd.ExcelWriter(xl, engine='openpyxl') as writer:
     writer.book[sn02].freeze_panes = 'A2'
     writer.book[sn02].auto_filter.ref='A:H'
 
-    df_fahrten_ohne_ez_zusatz.to_excel(writer, index=False, sheet_name=sn03)
-    writer.book[sn03].freeze_panes = 'A2'
-    writer.book[sn03].auto_filter.ref='A:H'
+    #df_fahrten_ohne_ez_zusatz.to_excel(writer, index=False, sheet_name=sn03)
+    #writer.book[sn03].freeze_panes = 'A2'
+    #writer.book[sn03].auto_filter.ref='A:H'
 
 
 # %%
@@ -984,10 +984,10 @@ for b in list_buendel[0:500]:
     else:
         html_page = html_page.replace('{{ html_table }}', "Keine Häufung Fahrten ohne Echtzeit")
 
-    if df_fahrten_ohne_ez_zusatz.query("~vu.isnull()").shape[0] > 0:
-        html_page = html_page.replace('{{ html_table_zusatz }}', df_fahrten_ohne_ez_zusatz.query("~vu.isnull()").to_html(index=False))
-    else:
-        html_page = html_page.replace('{{ html_table_zusatz }}', "Keine Zusatzfahrten mit gleicher Fahrtnummer")
+    #if df_fahrten_ohne_ez_zusatz.query("~vu.isnull()").shape[0] > 0:
+    #    html_page = html_page.replace('{{ html_table_zusatz }}', df_fahrten_ohne_ez_zusatz.query("~vu.isnull()").to_html(index=False))
+    #else:
+    #    html_page = html_page.replace('{{ html_table_zusatz }}', "Keine Zusatzfahrten mit gleicher Fahrtnummer")
 
     # Save the combined HTML page to a file
     html_combined = f"/var/www/rt_archiv/buendel/rt_{replace_german_special_characters(b).replace(' ', '_').lower()}.html"
