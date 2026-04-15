@@ -34,7 +34,7 @@ class RtDuck:
         self.cursor.sql(sql_lin)
 
     def create_table_fahrten(self, server:str, interval:int) -> None:
-        """ erstellt eine Tabelle fahrten aus den Parquet Files Fahrten fahrten_yyyy_mm_dd.parquet
+        """ erstellt eine Tabelle fahrten aus den Parquet Files fahrten_yyyy_mm_dd.parquet
         server: z.B. 'prod' oder 'demo'"""
         sql_create = f"""create or replace table fahrten as select * 
             from read_parquet('out/parquet/{server}/fahrten*.parquet',  union_by_name = true, filename = true)
@@ -51,7 +51,7 @@ class RtDuck:
         print("Table 'fahrten' created.")
 
     def create_table_zusatz(self, server:str, interval:int) -> None:
-        """ erstellt eine Tabelle zusatz aus den Parquet Files Fahrten zusatz_yyyy_mm_dd.parquet
+        """ erstellt eine Tabelle zusatz aus den Parquet Files zusatz_yyyy_mm_dd.parquet
         server: z.B. 'prod' oder 'demo'"""
         sql_create = f"""create or replace table zusatz as 
             select * 
@@ -61,7 +61,7 @@ class RtDuck:
         print("Table 'zusatz' created.")
 
     def create_table_verlauf(self, server:str, interval:int) -> None:
-        """ erstellt eine Tabelle zusatz aus den Parquet Files Fahrten verlauf_yyyy_mm_dd.parquet
+        """ erstellt eine Tabelle Verlauf aus den Parquet Files verlauf_yyyy_mm_dd.parquet
         server: z.B. 'prod' oder 'demo'"""
         sql_create = f"""create or replace table verlauf as select * 
             from read_parquet('out/parquet/{server}/verlauf*.parquet',  union_by_name = true, filename = true)
@@ -72,7 +72,7 @@ class RtDuck:
         print("Table 'verlauf' created.")
 
     def create_table_matrix(self, server:str, interval:int) -> None:
-        """ erstellt eine Tabelle matrix aus den Parquet Files Fahrten matrix_yyyy_mm_dd.parquet
+        """ erstellt eine Tabelle matrix aus den Parquet Files matrix_yyyy_mm_dd.parquet
         server: z.B. 'prod' oder 'demo'"""
         sql_create = f"""create or replace table matrix as select * 
             from read_parquet('out/parquet/{server}/matrix*.parquet',  union_by_name = true, filename = true)
