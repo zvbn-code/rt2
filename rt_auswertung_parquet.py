@@ -131,7 +131,7 @@ rt
 rt.create_table_fahrten(server = 'prod', interval = 42)
 
 # %%
-rt.cursor.sql("select count(*) from fahrten").fetchall()
+rt.cursor.sql("select datum, count(*) from fahrten group by datum order by datum").df().tail(5)
 
 # %%
 df = rt.cursor.sql("""pivot (select fnr, datum::date as datum, hasRealtime from fahrten 
@@ -216,7 +216,7 @@ plt.savefig('/var/www/rt_archiv/ausfall/ausfall.pdf', dpi=300)
 # ### Liste der Betreiber in Echtzeit Feld deviceid
 
 # %%
-rt.cursor.sql("select distinct str_split(deviceid, '#')[3], str_split(deviceid, '#')[2]  from verlauf where operday = current_date - 1")
+rt.cursor.sql("select distinct str_split(deviceid, '#')[3], str_split(deviceid, '#')[2] from verlauf where operday = current_date - 2")
 
 # %% [markdown]
 # ## Auswertung Echtzeit Anzahl Fahrten je Betreiber
@@ -358,6 +358,12 @@ rt.create_table_verlauf(server = 'prod', interval = 42)
 rt.create_table_matrix(server = 'prod', interval = 42)
 
 # %%
+rt.cursor.sql("select operday, count(*) from read_parquet('out/parquet/prod/verlauf_2026_04_1*.parquet',  union_by_name = true, filename = true) group by operday order by operday limit 5").df()
+
+# %%
+rt.cursor.sql("select operday, count(*) from verlauf group by operday order by operday").df().tail(5)
+
+# %%
 rt.cursor.sql("""select * 
               from zusatz 
               where datum = '2026-04-03' 
@@ -377,14 +383,14 @@ rt.cursor.sql("""select lineshort, count(*) as anz_ges, count(*) filter (where m
               join verlauf v on  f.datum = v.operday and f.fnr = v.fnr and f.lineid = v.ex_lineid
               where l.buendel = 'OHZ Ost'
               and hasrealtime = true
-              and f.datum >= '2024-09-01' and f.datum < '2024-12-31'
+              and f.datum >= '2025-09-01' and f.datum < '2026-12-31'
               and v.dep_del <= 60 -- Ausschluss extremer Werte
               group by all)
               group by all
               order by lineshort""")
 
 # %%
-rt.cursor.sql("select lineid, lineid_short, * from fahrten where datum::date = '2025-01-28' and lineid like 'de:VBN:740%' order by fnr")
+rt.cursor.sql("select lineid, lineid_short, * from fahrten where datum::date = '2026-04-14' and lineid like 'de:VBN:740%' order by fnr")
 
 # %% [markdown]
 # ## Erstellen einer Auswertung mit abweichender Clientid (gesamt, BSAG, VWG)
@@ -710,17 +716,17 @@ df_matrix = rt.cursor.sql("""select m.operatingDay::date, m.lineShortName, m.jou
               -- limit 20""").df()
 
 # %%
-auswahl_linien = '630|670|N68|N63|N67'
+auswahl_linien = '640|630|670|N68|N63|N67|680|660|330|340'
 df_zusatz = rt.cursor.sql(f"""
-                select datum::date as datum, lineshort,lineid ,fnr,  vu 
+                select lineid, fnr, min(datum::date) as datum_min,  max(datum::date) as datum_max, count(*) as anzahl,  vu 
                 from zusatz 
                 where                       
 
                     lineid SIMILAR TO 'de:VBN:.*({auswahl_linien}).*' and 
                     -- and vu like 'Reisedienst von Rahden%' 
-                    datum::date >= (current_date - interval 30 day)
+                    datum::date >= (current_date - interval 3 day)
                 group by all 
-                order by lineshort, fnr """).df()
+                order by lineid, fnr """).df()
 
 df_zusatz
 
@@ -733,6 +739,7 @@ rt.cursor.sql("select min(datum )::date as min_date, max(datum)::date as amx_dat
 # ### Häufung von Fahrten ohne Echtzeit
 
 # %%
+rt.create_vw_buendel('OL Nord')
 df_fahrten_ohne_ez = rt.cursor.sql("""
               
                 select datum::date as datum, ebene, lineshort , fnr, hasrealtime
@@ -750,6 +757,9 @@ df_fahrten_ohne_ez_zusatz.query("~vu.isnull()")
 df_fahrten_ohne_ez_zusatz[['lineshort_x','datum','fnr']].groupby(['lineshort_x','fnr'], as_index=False)\
     .agg(datum_min=('datum', 'min'), datum_max=('datum', 'max'), count=('datum', 'count')).sort_values('count', ascending=False)\
     .to_excel('out/rt_fahrten_ohne_ez_zusatz.xlsx', index=False)
+
+# %%
+rt.cursor.sql("from vw_buendel")
 
 # %%
 df_fahrten_ohne_ez_zusatz.query("~vu.isnull()")
@@ -942,9 +952,10 @@ for b in list_buendel[0:500]:
     
               """).df()
     
-    html_zusatz_table = 'html/pre_zusatz.html'
-    df_fahrten_ohne_ez_zusatz = df_fahrten_ohne_ez.merge(df_zusatz, left_on = ['datum', 'fnr'], right_on = ['datum', 'fnr'], how='left')
-    df_fahrten_ohne_ez_zusatz.query("~vu.isnull()").to_html(html_zusatz_table, index=False)
+    # Auswertung der Zusatzfahrten muss gesondert erfolgen 15.04.
+    #html_zusatz_table = 'html/pre_zusatz.html'
+    #df_fahrten_ohne_ez_zusatz = df_fahrten_ohne_ez.merge(df_zusatz, left_on = ['datum', 'fnr'], right_on = ['datum', 'fnr'], how='left')
+    #df_fahrten_ohne_ez_zusatz.query("~vu.isnull()").to_html(html_zusatz_table, index=False)
 
     html_pre_table = 'html/pre_table.html'
     df_fahrten_mit_nicht_vollstaendiger_echtzeit.to_html(html_pre_table, index=False)
@@ -1124,28 +1135,6 @@ for b in list_buendel[0:500]:
 
     # wb.save(xl)       
 
-# %%
-df_vorfaelle.columns.tolist()
-
-# %%
-data = []
-for row in range(1, 10):
-    row_data = [f"{row}-{col}" for col in range(1, 5)]
-    data.append(row_data)
-
-data
-
-# %%
-data = [] 
-data.append([f"Erstellt: {dt.datetime.now().strftime('%Y-%m-%d %H:%M')}"])    
-data.append(["Erläuterung der Werte in der Tabelle"])
-data.append([f"Blatt {sn01} enthält die Echtzeitquote der Ebenen des Bündels {b} für die letzten {interval_auswertung} Tage"])
-data.append([f"Blatt {sn02} enthält die Echtzeitquote der Linien des Bündels {b} für die letzten {interval_auswertung} Tage"])
-data.append([f"Blatt {sn03} filterbare Liste der Fahrten {b} für die letzten {interval_auswertung} Tage"])
-data.append([f"Blatt {sn05} enthält die Echtzeitdaten je Fahrt des Bündels {b} für die letzten {interval_auswertung} Tage"])
-
-data
-
 # %% [markdown]
 # ### Übersichtstabelle Vorfälle letzte Monate
 
@@ -1215,8 +1204,5 @@ logging.info(f"Anzahl Fahrten gesamt {rt.anzahl_fahrten()}")
 
 # %%
 rt.verbindung_schliessen()
-
-# %%
-
 
 
