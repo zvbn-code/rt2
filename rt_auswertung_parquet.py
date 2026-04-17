@@ -31,10 +31,7 @@ from openpyxl.formatting.rule import ColorScaleRule, CellIsRule, FormulaRule
 import matplotlib.pyplot as plt
 
 # %%
-duckdb.__version__
-
-# %%
-openpyxl.__version__
+os.chdir("/home/zvbn/python/rt2")
 
 # %%
 log_file = "log/log_rt.txt"
@@ -358,7 +355,7 @@ rt.create_table_verlauf(server = 'prod', interval = 42)
 rt.create_table_matrix(server = 'prod', interval = 42)
 
 # %%
-rt.cursor.sql("select operday, count(*) from read_parquet('out/parquet/prod/verlauf_2026_04_1*.parquet',  union_by_name = true, filename = true) group by operday order by operday limit 5").df()
+rt.cursor.sql("select operday, count(*) from read_parquet('out/parquet/prod/verlauf_2026_04_1*.parquet',  union_by_name = true, filename = true) group by operday order by operday limit 10").df()
 
 # %%
 rt.cursor.sql("select operday, count(*) from verlauf group by operday order by operday").df().tail(5)
@@ -1204,5 +1201,8 @@ logging.info(f"Anzahl Fahrten gesamt {rt.anzahl_fahrten()}")
 
 # %%
 rt.verbindung_schliessen()
+
+# %%
+
 
 
