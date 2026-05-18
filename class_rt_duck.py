@@ -35,7 +35,8 @@ class RtDuck:
 
     def create_table_fahrten(self, server:str, interval:int) -> None:
         """ erstellt eine Tabelle fahrten aus den Parquet Files fahrten_yyyy_mm_dd.parquet
-        server: z.B. 'prod' oder 'demo'"""
+        server: z.B. 'prod' oder 'demo'
+        Interval: Anzahl der Tage relativ zum aktuellen Tag, z.B. 7 für die letzten 7 Tage zur Begrenzung der Datenmenge"""
         sql_create = f"""create or replace table fahrten as select * 
             from read_parquet('out/parquet/{server}/fahrten*.parquet',  union_by_name = true, filename = true)
             where datum::date >= (current_date - interval {interval} day)"""
