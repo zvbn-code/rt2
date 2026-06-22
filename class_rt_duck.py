@@ -86,10 +86,11 @@ class RtDuck:
         mit dem vw_buendel
         buendel: Linienbündel z.B. 'VER Nord'"""
         sql_buendel = f"""create or replace view vw_buendel as
-                                (select f.datum, l.ebene, f.vu, f.fnr, f.fahrtstartstationname, 
-                                f.fahrtendstationname, f.lineshort, f.lineid_short, f.hasrealtime, 
-                                f.journey_cancelled, f.reported_cancelled, f.ts_reported_cancelled, 
-                                f.realtimeHasEverBeenReported         
+                                (select 
+                                    f.datum, l.ebene, f.vu, f.fnr, f.fahrtstartstationname, 
+                                    f.fahrtendstationname, f.lineshort, f.lineid_short, f.hasrealtime, 
+                                    f.journey_cancelled, f.reported_cancelled, f.ts_reported_cancelled, 
+                                    f.realtimeHasEverBeenReported         
                                 from fahrten f                                         
                                 left outer join linien l on f.lineid_short = l.dlid 
                                 where buendel like '%{buendel}%') 
@@ -184,9 +185,8 @@ class RtDuck:
         , round(sum(anz_rt)::float / sum(anz), 4)::float as quote
         from        
         (
-        select datum, 
-        ebene, 
-                
+            select datum, 
+            ebene,                 
             CASE 
                 WHEN ebene IN ('1+', '1', '2') THEN 'ebene_1_2'
                 WHEN ebene IN ('3') THEN 'ebene_3'
