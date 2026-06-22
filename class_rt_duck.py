@@ -87,11 +87,13 @@ class RtDuck:
         buendel: Linienbündel z.B. 'VER Nord'"""
         sql_buendel = f"""create or replace view vw_buendel as
                                 (select 
-                                    f.datum, l.ebene, f.vu, f.fnr, f.fahrtstartstationname, 
-                                    f.fahrtendstationname, f.lineshort, f.lineid_short, f.hasrealtime, 
-                                    f.journey_cancelled, f.reported_cancelled, f.ts_reported_cancelled, 
+                                    f.datum, l.ebene, f.vu, f.fnr, 
+                                    f.fahrtstartstationname, f.fahrtendstationname, 
+                                    f.lineshort, f.lineid_short, f.hasrealtime, 
+                                    f.journey_cancelled, f.reported_cancelled, 
+                                    f.ts_reported_cancelled, 
                                     f.realtimeHasEverBeenReported         
-                                from fahrten f                                         
+                                from fahrten f 
                                 left outer join linien l on f.lineid_short = l.dlid 
                                 where buendel like '%{buendel}%') 
                                 """
@@ -101,8 +103,9 @@ class RtDuck:
         """ erstellt oder ersetzt Sicht/View auf ein Linienbündel Fahrten mit dem Namen vw_buendel
         buendel: Linienbündel z.B. 'VER Nord'"""
         sql = f"""create or replace view vw_buendel_verlauf as
-                                (select v.operday, l.ebene, v.fnr, v.index, v.station_nr, 
-                                v.station_name, v.arr_del, v.dep_del,
+                                (select v.operday, l.ebene, v.fnr, v.index, 
+                                v.station_nr, v.station_name, 
+                                v.arr_del, v.dep_del,
                                 v.reported_cancelled, v.canc from verlauf v
                                 left join linien l on l.dlid = v.lineid_short 
                                 where l.buendel = '{buendel}' 
@@ -167,7 +170,8 @@ class RtDuck:
 
     def df_vorfaelle_echtzeit(self, days_rel:int) -> pd.DataFrame:
         """ Ermittelt die Quoten Echtzeitdaten und Vorfaelle
-        days_rel: Anzahl der Tage relativ zum aktuellen Tag"""
+        days_rel: Anzahl der Tage relativ zum aktuellen Tag
+        doppelte Fahrtnummer werden nur einmal berücksichtigt"""
 
         sql = f"""
         select datum, extract('month' from datum) as monat, ebene_group, anz, anz_rt, quote,
@@ -181,29 +185,35 @@ class RtDuck:
         end as vorfaelle        
         from 
         (
-        select datum, ebene_group, sum(anz)::int as anz, sum(anz_rt)::int as anz_rt
-        , round(sum(anz_rt)::float / sum(anz), 4)::float as quote
-        from        
-        (
-            select datum, 
-            ebene,                 
-            CASE 
-                WHEN ebene IN ('1+', '1', '2') THEN 'ebene_1_2'
-                WHEN ebene IN ('3') THEN 'ebene_3'
-                ELSE 'andere'
-            END AS ebene_group,
+            select datum, ebene_group, sum(anz)::int as anz, sum(anz_rt)::int as anz_rt
+            , round(sum(anz_rt)::float / sum(anz), 4)::float as quote
+            from        
+                (
+                    select datum, 
+                    ebene,                 
+                    CASE 
+                        WHEN ebene IN ('1+', '1', '2') THEN 'ebene_1_2'
+                        WHEN ebene IN ('3') THEN 'ebene_3'
+                        ELSE 'andere'
+                    END AS ebene_group,                    
+                    count(*) as anz, 
+                    count(*) filter (realtimeHasEverBeenReported ) as anz_rt
+                    from 
+                        -- weitere Filterung notwendig bei doppelten Fahrtnummern
+                        (Select datum, ebene, lineshort, lineid_short, fnr,
+                        bool_or(realtimeHasEverBeenReported) as realtimeHasEverBeenReported
+                        from vw_buendel
+                        group by all
+                        )
+                    where datum >= (current_date - interval {days_rel} day)
+                    group by all
+                    order by datum, ebene
+                )
             
-            count(*) as anz, 
-            count(*) filter (realtimeHasEverBeenReported ) as anz_rt
-            from vw_buendel
-            where datum >= (current_date - interval {days_rel} day)
+            where ebene_group in ('ebene_1_2', 'ebene_3')
             group by all
-            order by datum, ebene
-        )
-        
-        where ebene_group in ('ebene_1_2', 'ebene_3')
-        group by all
-        order by datum, ebene_group)
+            order by datum, ebene_group
+            )
         """
         return self.cursor.sql(sql).df()
 
