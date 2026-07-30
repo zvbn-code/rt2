@@ -31,7 +31,7 @@ from openpyxl.formatting.rule import ColorScaleRule, CellIsRule, FormulaRule
 import matplotlib.pyplot as plt
 
 # %%
-os.chdir("/home/zvbn/python/rt2")
+os.chdir("/home/zvbn/python/rt2") #wegen Ausführung *.py als Cronjob 
 
 # %%
 log_file = "log/log_rt.txt"
@@ -339,7 +339,7 @@ with pd.ExcelWriter(excel_file_wil, engine='openpyxl') as writer:
 
 # %%
 rt.cursor.sql("""from fahrten 
-              where datum > '2025-08-20' and clientid like '%IVU%'
+              where datum > '2026-06-20' and clientid like '%IVU%'
               limit 5""")
 
 # %%
@@ -363,7 +363,7 @@ rt.cursor.sql("select operday, count(*) from verlauf group by operday order by o
 # %%
 rt.cursor.sql("""select * 
               from zusatz 
-              where datum = '2026-04-03' 
+              where datum = '2026-06-03' 
               -- and fahrtstarttime::text like '%06:15%'
               -- and destination like '%Bremen%'
               limit 5""").df()
@@ -490,6 +490,23 @@ df_linien_nach_client = rt.cursor.sql( """select f.lineid_short, datum::date as 
 # %%
 rt.cursor.sql("from fahrten")
 
+# %% [markdown]
+# ## Problem der doppelten Einträge je Fahrt
+
+# %%
+rt.cursor.sql("""select * from (
+              select fnr, fnr::int % 2 as mod_fnr, count(*) as anz, 
+              count() over() as anz_o_doppelte, sum(count(*)) over() as anz_mit_doppelte,
+              bool_or(hasrealtime) as bool_or, bool_and(hasrealtime) as bool_and
+              from fahrten
+              where 
+              datum = '2026-06-17'
+              and (lineid like 'de:VBN:137%' or lineid like 'de:VBN:170%'  or lineid like 'de:VBN:125%'  or lineid like 'de:VBN:129%')
+              group by all
+              order by mod_fnr, fnr)
+              where anz > 1
+              order by fnr""").df()
+
 # %%
 def sql_ebenen(ebenen):
             sql = f""" 
@@ -557,7 +574,7 @@ index_names = {
 }
 headers = {
     'selector': 'th:not(.index_name)',
-    'props': 'background-color: #FFFFFF; color: #000000; font-family: sans-serif;'
+    'props': 'background-color: #FFFFFF; color: #000000; font-family: sans-serif; position: sticky; top: 0; z-index: 2;'
 }
 
 td = {'selector' : 'td', 'props': 'text-align:right; font-family: sans-serif'}
@@ -672,6 +689,22 @@ with pd.ExcelWriter(ohne_rt_xl, engine='openpyxl') as writer:
 df_zusatz
 
 # %%
+rt.cursor.sql("""pivot (
+              select f.datum, l.dlid, l.buendel, l.ebene, f.lineshort, count(*) as anz, 
+              count () filter (hasRealtime  = false) as anzahl_ohne_rt,  
+              round(anzahl_ohne_rt / anz, 3) as proz_ohne_rt
+              from fahrten f 
+              join linien l on f.lineid_short = l.dlid
+               where f.datum >= current_date - interval '30 days'
+              group by all
+              order by l.buendel, l.ebene )
+              on datum
+              using sum(proz_ohne_rt)
+              group by buendel, ebene, lineshort
+              order by buendel, ebene, lineshort              
+              """).df()
+
+# %%
 df_linien_quote_rt = rt.cursor.sql("""
             select * from
               ( select lineshort, min(datum)::date as min_datum, max(datum)::date as max_datum,  
@@ -767,7 +800,7 @@ df_fahrten_mit_nicht_vollstaendiger_echtzeit = rt.cursor.sql(f"""
             select * from 
                 (select ebene, lineshort , fnr, count(*) as anz, count(*) filter (hasRealtime) as anz_rt, 
                     (anz - anz_rt) as f_ohne_rt ,round(anz_rt/anz,2) as quote,
-                    max(datum::date) filter (hasRealtime) as letzte_lieferung_echtzeit
+                    max(datum::date) filter (hasRealtime) as letzte_lieferung_echtzeit, vu
                 from vw_buendel 
                 where datum >= (current_date - interval {interval_auswertung} day)
                 group by all
@@ -777,6 +810,9 @@ df_fahrten_mit_nicht_vollstaendiger_echtzeit = rt.cursor.sql(f"""
             """).df()
 
 df_fahrten_mit_nicht_vollstaendiger_echtzeit
+
+# %%
+rt.cursor.sql(f"""describe vw_buendel""").df()
 
 # %%
 xl = 'out/nicht_vollstaendig.xlsx'
@@ -922,7 +958,7 @@ for b in list_buendel[0:500]:
                 select * from 
                     (select ebene, lineshort , fnr, count(*) as anz, count(*) filter (hasRealtime) as anz_ez, 
                     (anz - anz_ez) as fahrten_ohne_ez ,round(anz_ez/anz,2) as quote,
-                    max(datum::date) filter (realtimeHasEverBeenReported ) as letzte_lieferung_echtzeit
+                    max(datum::date) filter (realtimeHasEverBeenReported ) as letzte_lieferung_echtzeit, vu
                     from vw_buendel 
                     where datum >= (current_date - interval {interval_auswertung} day)
                     group by all
@@ -1020,7 +1056,7 @@ for b in list_buendel[0:500]:
     # cell.font = bold_font
     # ws.append([cell])
 
-    # Blatt 01 Vorfälle
+    # Blatt 01 Vorfälle Basis letzte 36 Tage
     ws = wb.create_sheet(title=sn01, index=1)
     df_vorfaelle = rt.cursor.sql("from cal_rel").df().merge(rt.df_vorfaelle_echtzeit(36), on = 'datum', how='left')
     ws.append(df_vorfaelle.columns.tolist())
@@ -1165,7 +1201,9 @@ with pd.ExcelWriter(xl, engine='openpyxl') as writer:
 shutil.copyfile(xl, '/var/www/rt_archiv/uebersicht_stat.xlsx')
 
 # %% [markdown]
-# ### Upload nach Redmine
+# ### Upload 
+# - nach Redmine Steuerungsprojekte
+# - in den Ordner https://daten.zvbn.de/rt_archiv/
 
 # %%
 importlib.reload(redmine)
