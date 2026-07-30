@@ -44,6 +44,9 @@
 ### Ausfall je Bündel
 - https://daten.zvbn.de/rt_archiv/ausfall_pivot.html
 
+### Detaillierte Ergebnisdateien im Excel-Format, die den Unternehmen zur Verfügung gestellt werden
+- https://daten.zvbn.de/rt_archiv/ (z.B. dh_nordost_stat.xlsx)
+
 ## Beispieldateien aufbereitete Rohdaten
 Über die API werden die Daten als xml geliefert. Für die weitere Aufbereitung werden diese als Parquet-Dateien tagesscharf abgelegt.
 Im Ordner parquet_beispiel finden sich 
@@ -52,7 +55,7 @@ Im Ordner parquet_beispiel finden sich
 - matrix_spnv*.parquet Auflistung auch der zwischenzeitlichen Echtzeitmeldungen für den SPNV
 - zusatz*.parquet Auflistung von Zusatzfahrten für die Qualitätskontrolle
 
-Die Auswertung diese Parquet kann z.B. mit DuckDB erfolgen, welches einfach auf den Ordner mit den Dateien zugreift
+Die Auswertung dieser Parquet-Dateien kann z.B. mit [DuckDB](https://duckdb.org/docs/current/data/parquet/overview) erfolgen, welches einfach auf den Ordner mit den Dateien zugreift
 
 ``SELECT *, filename
 FROM read_parquet('test/*.parquet');``
