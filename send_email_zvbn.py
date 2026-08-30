@@ -43,7 +43,7 @@ def log_email(recipients, subject, body_plain, body_html, **files):
     # Create a multipart message and set headers
     message = MIMEMultipart("alternative")
     
-    message["From"] = formataddr((str(Header('DRPCA Import Log', 'utf-8')), sender_email))
+    message["From"] = formataddr((str(Header('HAFAS API', 'utf-8')), sender_email))
     message["To"] = ', '.join(recipients)
     message["Subject"] = subject
     #message["Bcc"] = receiver_email  # Recommended for mass emails
