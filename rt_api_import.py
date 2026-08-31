@@ -19,6 +19,7 @@ import xml.etree.ElementTree as ET
 import xml.dom.minidom
 import datetime as dt
 import time
+import logging
 
 import numpy as np
 import pandas as pd
@@ -37,9 +38,13 @@ from importlib import reload
 
 from dotenv import load_dotenv, dotenv_values
 import logging
+from send_email_zvbn import log_email
+
+# %%
 os.chdir("/home/zvbn/python/rt2")
 
-log_file = f"log/log_rt.txt"
+# %%
+log_file = "log/log_rt.txt"
 logging.basicConfig(filename=log_file, 
                         level=logging.INFO,
                         style="{",
@@ -68,19 +73,16 @@ pd.options.display.max_columns = 500
 # ## Ermitteln verschiedener Zeitpunkte 
 
 # %%
-os.chdir("/home/zvbn/python/rt2")
-
-# %%
 jetzt = dt.datetime.now().strftime('%Y%m%d%H%M')
 heute = dt.date.today().strftime('%Y%m%d')
 heute_ll = dt.datetime.now().strftime('%d.%m.%Y %H:%M')
 gestern = (dt.date.today() - timedelta(1)).strftime('%Y-%m-%d')
 
 # %%
-start = sys.argv[1]
-#start = gestern
-ende = sys.argv[1]
-#ende = gestern
+#start = sys.argv[1]
+start = gestern
+#ende = sys.argv[1]
+ende = gestern
 
 # %% [markdown]
 # # Funktionen
@@ -89,64 +91,103 @@ ende = sys.argv[1]
 # ## Aufrufen der SOAP-Abfrage
 
 # %%
+def get_status(myUrl, xml_request_dlid):
+    res = requests.post(myUrl, data=xml_request_dlid)
+    root = ET.fromstring(res.text)
+    for child in root.iter('status'):
+        #print(child.tag, child.attrib, child.text)
+        status = child.text
+
+    return status
+
+# %%
 def request_xml(api_version, xml_request, xml_out, myUrl):
     #Zugriff auf Hafas RT Archiv Produktiv System und Zugriffsschlüssel 
 
     req_ini = requests.post(myUrl, data=xml_request)
     root = ET.fromstring(req_ini.text)
     print(req_ini.text)
-    
-    #Ermitteln der Export ID
-    for child in root.iter('exportId'):
-        print(child.tag, child.attrib, child.text)
-        exportId = child.text
-    xml_status = f"""
-                <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" 
-                    xmlns:v{api_version}="http://v{api_version}.export.service.data.archive.itcs.hafas.hacon.de/">
-               <soapenv:Header/>
-                    <soapenv:Body>
-                        <v{api_version}:getArchiveExportStatus>
-                            <exportId>{exportId}</exportId>
-                        </v{api_version}:getArchiveExportStatus>
-                    </soapenv:Body>
-              </soapenv:Envelope>
-              """
-    #Abfragen und Warten auf Completed
+
+    #Ermitteln Status
     status = ''
-    time.sleep(2) # initiales Warten auf Beendigung
-    while status != 'COMPLETED':
-        r = requests.post(myUrl, data=xml_status)
-        #print(r, '\n',r.text)
-        root = ET.fromstring(r.text)
-        for child in root.iter('status'):
-            #print(child.tag, child.attrib, child.text)
-            status = child.text
-            print(f'{dt.datetime.now()} Status: {status}')
-            if status != 'COMPLETED': # Pause falls Job nicht beendet (Status nicht completed d.h. in process)
-                time.sleep(10) # Pause von 20 Sekunden bis zur nächsten Abfrage des Status
-    
-    # Afrage nach Beendigung Journey List
+    for child in root.iter('status'):
+        #print(child.tag, child.attrib, child.text)
+        status_initial = child.text
+    print(status_initial)
 
-    xml_jl = ('<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" '
-               'xmlns:v'+str(api_version)+'="http://v'+str(api_version)+'.export.service.data.archive.itcs.hafas.hacon.de/">'
-                 '<soapenv:Header/><soapenv:Body>'
-                    '<v'+str(api_version)+':getArchiveJourneyList>'
-                       '<exportId>' + exportId + '</exportId>'              
-                     '</v'+str(api_version)+':getArchiveJourneyList>'
-                 '</soapenv:Body>'
-          '</soapenv:Envelope>')
-    
-    rj = requests.post(myUrl, data=xml_jl)
+    if status_initial != 'FAILURE':
+        #Ermitteln der Export ID
+        for child in root.iter('exportId'):
+            print(child.tag, child.attrib, child.text)
+            exportId = child.text
+        xml_status = f"""
+                    <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" 
+                        xmlns:v{api_version}="http://v{api_version}.export.service.data.archive.itcs.hafas.hacon.de/">
+                <soapenv:Header/>
+                        <soapenv:Body>
+                            <v{api_version}:getArchiveExportStatus>
+                                <exportId>{exportId}</exportId>
+                            </v{api_version}:getArchiveExportStatus>
+                        </soapenv:Body>
+                </soapenv:Envelope>
+                """
+        #Abfragen und Warten auf Completed
+        status = ''
+        time.sleep(2) # initiales Warten auf Beendigung
+        while status != 'COMPLETED':
+            r = requests.post(myUrl, data=xml_status)
+            #print(r, '\n',r.text)
+            root = ET.fromstring(r.text)
+            for child in root.iter('status'):
+                #print(child.tag, child.attrib, child.text)
+                status = child.text
+                print(f'{dt.datetime.now()} Status: {status}')
+                if status != 'COMPLETED': # Pause falls Job nicht beendet (Status nicht completed d.h. in process)
+                    time.sleep(10) # Pause von 20 Sekunden bis zur nächsten Abfrage des Status
+        
+        # Afrage nach Beendigung Journey List
 
-    #Ausgabe des Ergebnis XML Journey
-    dom = xml.dom.minidom.parseString(rj.text)
-    pretty_xml_as_string = dom.toprettyxml()
-    
-    jl = open(os.path.join(xml_out), 'w')
-    print(pretty_xml_as_string, file = jl)
-    print(os.path.join(xml_out), 'gespeichert')
+        xml_jl = ('<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" '
+                'xmlns:v'+str(api_version)+'="http://v'+str(api_version)+'.export.service.data.archive.itcs.hafas.hacon.de/">'
+                    '<soapenv:Header/><soapenv:Body>'
+                        '<v'+str(api_version)+':getArchiveJourneyList>'
+                        '<exportId>' + exportId + '</exportId>'              
+                        '</v'+str(api_version)+':getArchiveJourneyList>'
+                    '</soapenv:Body>'
+            '</soapenv:Envelope>')
+        
+        rj = requests.post(myUrl, data=xml_jl)
 
-    jl.close()
+        #Ausgabe des Ergebnis XML Journey
+        dom = xml.dom.minidom.parseString(rj.text)
+        pretty_xml_as_string = dom.toprettyxml()
+        
+        jl = open(os.path.join(xml_out), 'w')
+        print(pretty_xml_as_string, file = jl)
+        print(os.path.join(xml_out), 'gespeichert')
+
+        jl.close()
+    else:
+        print(f'{dt.datetime.now()} Initial status FAILURE, Abbruch.')
+        logging.error(f'Initial status FAILURE, Abbruch.')
+
+        #Versenden E-Mail
+        subject = f"Import RT Archive failed {dt.datetime.now().strftime('%Y-%m-%d')}"
+        recipients = ['semmelhaack@zvbn.de']
+                # Text Format
+        body_plain = """
+        Api sendet Status FAILURE
+        """
+        #Html Format
+        body_html = """
+        <body>
+        <p>API sendet Status FAILURE</p>
+        </body>
+        """
+        log_email(recipients=recipients, subject=subject, body_plain=body_plain, body_html=body_html)
+
+        raise SystemExit("Initial status FAILURE, Abbruch.")
+        
 
 # %% [markdown]
 # ## Import xml Fahrten > Dataframe
@@ -460,7 +501,7 @@ api_version = 15
 clientID = config['CLIENT_ID_PROD']
 server = 'prod' #prod oder demo
 #lineExternalNamePattern = 'de:VBN:62:*' #Auswahl einer Linie nicht für produktiv
-lineExternalNamePattern = 'de:VBN:*,de:hvv:RB33:,de:hvv:RB41:,de:hvv:RE4:,de:VBN-VGC:910:' #Gesamt VBN
+lineExternalNamePattern = 'de:VBN:*,de:hvv:RB33:,de:hvv:RB41:,de:hvv:RE4:,de:VBN-VGC:910:,de:VBN-VGC:OM2:' #Gesamt VBN
 
 #Festlegen Prod oder Demosystem
 if server == 'prod':
@@ -493,7 +534,6 @@ else:
     print('no tar.gz')   
 
 request_xml(api_version=api_version, xml_request=xml_request_dlid, xml_out=xml_out, myUrl=myUrl)
-
 
 # %%
 print(f"XML-Datei {xml_out} erstellt")
